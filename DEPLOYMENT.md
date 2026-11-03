@@ -1,12 +1,12 @@
-# Production Deployment & Public Internet Access Guide: CYPHR on Oracle Linux (1GB RAM)
+# Production Deployment & Public Internet Access Guide: CYPHR on Ubuntu / Debian / Oracle Linux (1GB RAM)
 
-This guide takes you through deploying **CYPHR** on an **Oracle Linux** VPS (1GB RAM & dual-core CPU) and accessing it securely over the public internet from any device without needing a domain name.
+This guide takes you through deploying **CYPHR** on an **Ubuntu** (20.04, 22.04, 24.04), **Debian**, or **Oracle Linux** VPS (1GB RAM & dual-core CPU) and accessing it securely over the public internet from any device without needing a domain name.
 
 ---
 
 ## ⚡ Method 1: The 1-Click Automated Installer (Recommended)
 
-Simply run the included installer script as root:
+Simply run the included installer script as root on your Ubuntu or Oracle Linux server:
 
 ```bash
 sudo bash installation.sh
@@ -14,20 +14,21 @@ sudo bash installation.sh
 
 The script will automatically:
 1. Detect your public IP.
-2. Configure 2GB swap space to guarantee system stability under the 1GB RAM constraint.
-3. Install Nginx and build tools.
-4. Compile the ultra-lightweight Go server (< 20MB RSS).
-5. Set up systemd with memory limit cgroups.
-6. Configure Nginx reverse proxy on port 80.
-7. Open ports in `firewalld`.
-8. Output the ready-to-use URL: **`http://<YOUR_PUBLIC_IP>`**.
+2. Detect your package manager (`apt-get`, `dnf`, or `yum`).
+3. Configure 2GB swap space to guarantee system stability under the 1GB RAM constraint.
+4. Install Nginx, Git, build tools, and modern Go compiler (>= 1.22).
+5. Compile the ultra-lightweight Go server (< 20MB RSS).
+6. Set up systemd service with memory limit cgroups.
+7. Configure Nginx reverse proxy on port 80 (cleaning conflicting default sites).
+8. Open ports in `ufw` (Ubuntu) or `firewalld` (Oracle Linux / RHEL).
+9. Output the ready-to-use URL: **`http://<YOUR_PUBLIC_IP>`**.
 
 ---
 
-## 🌐 Method 2: Manual Step-by-Step Installation
+## 🌐 Method 2: Manual Step-by-Step Installation for Ubuntu / Debian
 
 ### Step 0: Find Your Server's Public IP Address
-Run this command in your Oracle Linux terminal:
+Run this command in your server terminal:
 ```bash
 curl -4 ifconfig.me
 ```
@@ -35,26 +36,25 @@ curl -4 ifconfig.me
 
 ---
 
-### Step 1: Open Oracle Cloud & OS Firewall Ports
+### Step 1: Open Firewall Ports
 
-#### 1.1 In Oracle Cloud (OCI) Console:
-1. Go to **Networking** > **Virtual Cloud Networks**.
-2. Click your VCN > **Security Lists** > **Default Security List**.
-3. Add Ingress Rule:
-   - **Source CIDR:** `0.0.0.0/0`
-   - **IP Protocol:** `TCP`
-   - **Destination Port Range:** `80,8080`
+#### 1.1 In Cloud Console (OCI, AWS, GCP, DigitalOcean):
+Add an Ingress Security Rule:
+- **Source CIDR:** `0.0.0.0/0`
+- **IP Protocol:** `TCP`
+- **Destination Port Range:** `80, 8080`
 
-#### 1.2 In Server Terminal (`firewalld`):
+#### 1.2 In Server Terminal (`ufw` on Ubuntu):
 ```bash
-sudo firewall-cmd --permanent --add-service=http
-sudo firewall-cmd --permanent --add-port=8080/tcp
-sudo firewall-cmd --reload
+sudo ufw allow 80/tcp
+sudo ufw allow 8080/tcp
+sudo ufw reload
 ```
+*(Or if using `firewalld`: `sudo firewall-cmd --permanent --add-service=http && sudo firewall-cmd --permanent --add-port=8080/tcp && sudo firewall-cmd --reload`)*
 
 ---
 
-### Step 2: Configure 2GB Swap Memory
+### Step 2: Configure 2GB Swap Memory (Crucial for 1GB VPS)
 ```bash
 sudo fallocate -l 2G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048
 sudo chmod 600 /swapfile
@@ -62,11 +62,28 @@ sudo mkswap /swapfile
 sudo swapon /swapfile
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 sudo sysctl vm.swappiness=15
+echo 'vm.swappiness=15' | sudo tee -a /etc/sysctl.conf
 ```
 
 ---
 
-### Step 3: Install Nginx and Golang
+### Step 3: Install Nginx, Git, and Golang (Go 1.22+)
+
+#### On Ubuntu / Debian:
+```bash
+sudo apt-get update
+sudo apt-get install -y nginx git curl tar gzip
+
+# Install Go 1.22+ (Ubuntu 20.04 default repo has Go 1.13, so download official binary):
+ARCH=$(uname -m)
+[ "$ARCH" = "x86_64" ] && GO_ARCH="amd64" || GO_ARCH="arm64"
+curl -fsSL "https://go.dev/dl/go1.22.6.linux-${GO_ARCH}.tar.gz" -o /tmp/go.tar.gz
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf /tmp/go.tar.gz
+sudo ln -sf /usr/local/go/bin/go /usr/bin/go
+go version
+```
+
+#### On Oracle Linux / RHEL:
 ```bash
 sudo dnf install -y epel-release
 sudo dnf install -y nginx git golang
@@ -99,6 +116,10 @@ sudo systemctl start im-server
 
 ### Step 6: Configure Nginx for Direct IP Access
 ```bash
+# Disable default site on Ubuntu if present
+sudo rm -f /etc/nginx/sites-enabled/default /etc/nginx/conf.d/default.conf
+
+# Install CYPHR reverse proxy config
 sudo cp deploy/nginx.conf /etc/nginx/conf.d/cyphr.conf
 sudo nginx -t
 sudo systemctl enable nginx

@@ -1,12 +1,12 @@
 # CYPHR // Ultra-Lightweight E2EE Real-Time Messaging
 
-A privacy-focused, mobile-first Instant Messaging (IM) web application built specifically for ultra-low-resource environments (e.g., **Oracle Linux VPS with 1 GB RAM and dual-core CPU**).
+A privacy-focused, mobile-first Instant Messaging (IM) web application built specifically for ultra-low-resource environments (e.g., **Ubuntu 20.04/22.04/24.04, Debian, or Oracle Linux VPS with 1 GB RAM and dual-core CPU**).
 
 ---
 
 ## ⚡ 1-Click Automated Installation (Direct-IP, No Domain Required)
 
-If you don't have a domain and just want to install and access the app directly via your server's **Public IP address**, run this single command on your Oracle Linux server:
+If you don't have a domain and just want to install and access the app directly via your server's **Public IP address**, run this single command on your server (supports Ubuntu, Debian, Oracle Linux, and RHEL):
 
 ```bash
 sudo bash installation.sh
@@ -50,7 +50,7 @@ sudo bash installation.sh
 ## 📁 Repository Structure
 
 ```
-├── installation.sh            # 1-Click automated installer for Oracle Linux
+├── installation.sh            # 1-Click automated installer for Ubuntu / Debian / Oracle Linux
 ├── cmd/
 │   └── server/
 │       ├── main.go            # HTTP server, embedded assets & WebSocket handler
@@ -83,13 +83,18 @@ http://<YOUR_SERVER_PUBLIC_IP>
 ```
 *(e.g., `http://132.145.20.100`)*
 
-### 2. If using Oracle Cloud Infrastructure (OCI):
-Remember to allow Ingress traffic for port 80 in your Oracle Cloud Console:
-- Go to **Networking** > **Virtual Cloud Networks** > Click your VCN > **Security Lists**.
-- Click **Add Ingress Rules**:
-  - Source CIDR: `0.0.0.0/0`
-  - IP Protocol: `TCP`
-  - Destination Port: `80, 8080`
+### 2. If using Oracle Cloud Infrastructure (OCI) or Cloud Firewalls (AWS/GCP/DigitalOcean):
+Remember to allow Ingress traffic for port 80 (and 8080) in your Cloud Security Rules / Security Lists:
+- **Source CIDR:** `0.0.0.0/0`
+- **IP Protocol:** `TCP`
+- **Destination Port:** `80, 8080`
+
+If using Ubuntu's `ufw` firewall locally:
+```bash
+sudo ufw allow 80/tcp
+sudo ufw allow 8080/tcp
+sudo ufw reload
+```
 
 ### 3. Shareable Private Room Links
 Once you join a room, tap the **🔗 (Link)** button in the top right corner. It will copy a private link to your clipboard:
