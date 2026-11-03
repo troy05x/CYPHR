@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0f0d">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>CYPHR // Zero-Retention E2EE IM</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+</head>
+<body>
+  <div id="app" class="app-container">
+
+    <!-- JOIN / LOBBY SCREEN -->
+    <div id="lobbyScreen" class="screen active">
+      <div class="lobby-card">
+        <div class="brand">
+          <div class="brand-badge">E2EE // ZERO-RETENTION</div>
+          <h1 class="brand-title">CYPHR<span class="pulse-dot"></span></h1>
+          <p class="brand-subtitle">Private, ephemeral real-time messaging. Nothing is ever saved to disk.</p>
+        </div>
+
+        <form id="joinForm" class="join-form">
+          <div class="input-group">
+            <label for="nicknameInput">YOUR CALLSIGN / NICKNAME</label>
+            <input type="text" id="nicknameInput" maxlength="24" placeholder="e.g. Neo, Cipher..." autocomplete="off" required>
+          </div>
+
+          <div class="input-group">
+            <label for="roomInput">ROOM ID</label>
+            <div class="input-with-action">
+              <input type="text" id="roomInput" maxlength="32" placeholder="e.g. darknet-vault" autocomplete="off" required>
+              <button type="button" id="randomRoomBtn" class="btn-ghost" title="Generate Random Room">⚡ Random</button>
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label for="keyInput">E2EE ENCRYPTION KEY (AES-256)</label>
+            <div class="input-with-action">
+              <input type="password" id="keyInput" placeholder="Passphrase used to encrypt in browser" autocomplete="off" required>
+              <button type="button" id="toggleKeyVisibility" class="btn-ghost">👁️</button>
+              <button type="button" id="randomKeyBtn" class="btn-ghost" title="Generate Secure Key">🔑 Key</button>
+            </div>
+            <div class="crypto-note">
+              <span>🔒 Client-side WebCrypto AES-GCM (256-bit). The server only routes encrypted ciphertext.</span>
+            </div>
+          </div>
+
+          <button type="submit" id="enterRoomBtn" class="btn-primary">
+            <span>ENTER SECURE CHANNEL</span>
+            <span class="btn-arrow">→</span>
+          </button>
+        </form>
+
+        <div class="security-pills">
+          <span class="pill">⚡ 1GB RAM Optimized</span>
+          <span class="pill">🛡️ Zero Server Memory Logs</span>
+          <span class="pill">📱 Mobile Native PWA</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ACTIVE CHAT SCREEN -->
+    <div id="chatScreen" class="screen">
+      <!-- HEADER -->
+      <header class="chat-header">
+        <div class="header-left">
+          <button id="leaveBtn" class="btn-icon" title="Leave & Wipe Memory" aria-label="Leave Room">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M15 18l-6-6 6-6"/>
+            </svg>
+          </button>
+          <div class="room-meta">
+            <div class="room-title">
+              <span class="neon-hash">#</span><span id="currentRoomDisplay">room</span>
+              <span class="e2ee-tag">🔒 E2EE</span>
+            </div>
+            <div class="room-status">
+              <span class="live-dot"></span>
+              <span id="participantCount">1 online</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="header-right">
+          <button id="peersBtn" class="btn-icon" title="View Active Participants" aria-label="View Participants">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+          </button>
+          <button id="shareLinkBtn" class="btn-icon" title="Copy Private Invite Link" aria-label="Copy Invite Link">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+          </button>
+          <button id="clearChatBtn" class="btn-icon" title="Wipe Local Messages" aria-label="Wipe Local Screen">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- ACTIVE PEERS DRAWER (MODAL) -->
+      <div id="peersDrawer" class="peers-drawer hidden">
+        <div class="drawer-header">
+          <h3>ACTIVE IN ROOM</h3>
+          <button id="closePeersBtn" class="btn-icon">✕</button>
+        </div>
+        <ul id="peerList" class="peer-list"></ul>
+      </div>
+
+      <!-- MESSAGES SCROLL AREA -->
+      <main id="messagesContainer" class="messages-container">
+        <div class="system-banner">
+          <div class="shield-icon">🛡️</div>
+          <div class="banner-text">
+            <strong>Zero-Retention End-to-End Encrypted Session</strong>
+            <p>Messages are encrypted on your device using AES-256-GCM. The server never has the encryption key, never stores history, and discards all memory packets upon delivery.</p>
+          </div>
+        </div>
+        <!-- Dynamic message elements injected here -->
+      </main>
+
+      <!-- TYPING INDICATOR -->
+      <div id="typingIndicator" class="typing-indicator hidden">
+        <span class="typing-text">Someone is typing</span>
+        <div class="typing-dots">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+
+      <!-- GIF PICKER MODAL -->
+      <div id="gifModal" class="gif-modal hidden">
+        <div class="gif-modal-header">
+          <input type="text" id="gifSearchInput" placeholder="Search GIF or paste direct .gif URL..." autocomplete="off">
+          <button id="closeGifBtn" class="btn-icon">✕</button>
+        </div>
+        <div class="gif-custom-input">
+          <input type="url" id="customGifUrlInput" placeholder="Direct GIF URL (https://.../*.gif)">
+          <button type="button" id="sendCustomGifBtn" class="btn-secondary">Send URL</button>
+        </div>
+        <div id="gifGrid" class="gif-grid">
+          <!-- Curated privacy-safe animated GIFs pre-populated -->
+        </div>
+      </div>
+
+      <!-- CHAT INPUT FORM -->
+      <footer class="chat-footer">
+        <form id="chatForm" class="chat-form">
+          <button type="button" id="gifBtn" class="btn-action" title="Send GIF" aria-label="Send GIF">GIF</button>
+          <textarea id="messageInput" rows="1" placeholder="Type an encrypted message..." autocomplete="off" required></textarea>
+          <button type="submit" id="sendBtn" class="btn-send" title="Send Message" aria-label="Send">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="22" y1="2" x2="11" y2="13"/>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+        </form>
+      </footer>
+    </div>
+
+    <!-- TOAST NOTIFICATIONS -->
+    <div id="toast" class="toast hidden"></div>
+  </div>
+
+  <script src="crypto.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

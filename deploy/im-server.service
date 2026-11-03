@@ -1,0 +1,42 @@
+[Unit]
+Description=CYPHR Zero-Retention E2EE Instant Messaging Server
+After=network.target
+
+[Service]
+Type=simple
+User=imapp
+Group=imapp
+WorkingDirectory=/opt/im-server
+ExecStart=/opt/im-server/cyphr-server -port 8080
+
+# Environment variables for tight memory management on 1GB VPS
+Environment=GOMEMLIMIT=128MiB
+Environment=GOGC=50
+Environment=PORT=8080
+
+# Process & Memory Constraints (Enforced by systemd cgroups)
+MemoryMax=192M
+MemoryHigh=160M
+CPUQuota=150%
+
+# Auto-Restart & Resilience
+Restart=always
+RestartSec=3s
+
+# Security Sandbox
+ProtectSystem=strict
+ProtectHome=true
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cyphr-im
+
+[Install]
+WantedBy=multi-user.target
