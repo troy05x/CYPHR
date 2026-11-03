@@ -111,41 +111,73 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 6. Review & Install Go Compiler
+# 6. Review & Install Go Compiler (Go 1.22+ required for go:embed and stdlib)
 # ------------------------------------------------------------------------------
-NEED_GO_INSTALL=0
-if command -v go &> /dev/null; then
-  GO_VER=$(go version | awk '{print $3}' | sed 's/go//')
-  log_info "Found existing Go version: ${GO_VER}"
-  # Check if version is at least 1.22
-  GO_MAJOR=$(echo "$GO_VER" | cut -d. -f1)
-  GO_MINOR=$(echo "$GO_VER" | cut -d. -f2)
-  if [ "$GO_MAJOR" -lt 1 ] || { [ "$GO_MAJOR" -eq 1 ] && [ "$GO_MINOR" -lt 22 ]; }; then
-    log_warn "Installed Go version (${GO_VER}) is below minimum requirement 1.22+. Upgrading Go..."
-    NEED_GO_INSTALL=1
+check_go_version() {
+  local binary="${1:-go}"
+  if ! command -v "$binary" &> /dev/null; then
+    return 1
   fi
+  local ver_raw clean_ver major minor
+  ver_raw=$("$binary" version 2>/dev/null | awk '{print $3}')
+  clean_ver=$(echo "$ver_raw" | sed -E 's/^go//; s/[^0-9.].*//')
+  major=$(echo "$clean_ver" | cut -d. -f1)
+  minor=$(echo "$clean_ver" | cut -d. -f2)
+  if [ -n "$major" ] && [ -n "$minor" ] && { [ "$major" -gt 1 ] || { [ "$major" -eq 1 ] && [ "$minor" -ge 22 ]; }; }; then
+    return 0
+  fi
+  return 1
+}
+
+install_official_go() {
+  log_info "Downloading and installing official Go 1.22.6 binary..."
+  local go_arch="amd64"
+  if [ "$ARCH" = "aarch64" ]; then
+    go_arch="arm64"
+  fi
+  curl -fsSL "https://go.dev/dl/go1.22.6.linux-${go_arch}.tar.gz" -o /tmp/go.tar.gz
+  rm -rf /usr/local/go
+  tar -C /usr/local -xzf /tmp/go.tar.gz
+  rm -f /tmp/go.tar.gz
+
+  mkdir -p /usr/local/bin /usr/bin
+  ln -sf /usr/local/go/bin/go /usr/local/bin/go
+  ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+  ln -sf /usr/local/go/bin/go /usr/bin/go
+  ln -sf /usr/local/go/bin/gofmt /usr/bin/gofmt
+  hash -r 2>/dev/null || true
+}
+
+# Ensure /usr/local/go/bin and /usr/local/bin are in PATH
+export PATH="/usr/local/go/bin:/usr/local/bin:${PATH}"
+
+if check_go_version "go"; then
+  log_info "Found compatible Go version: $(go version)"
 else
-  NEED_GO_INSTALL=1
-fi
+  if command -v go &> /dev/null; then
+    log_warn "Installed Go version ($(go version)) is older than required 1.22+."
+  else
+    log_info "Go compiler not found."
+  fi
 
-if [ "$NEED_GO_INSTALL" -eq 1 ]; then
-  log_info "Go compiler not found. Installing Golang..."
-  if ! $PKG_MGR install -y golang; then
-    log_info "Package manager golang unavailable, downloading official Go binary tarball..."
-    GO_ARCH="amd64"
-    if [ "$ARCH" = "aarch64" ]; then
-      GO_ARCH="arm64"
+  # Attempt package manager install first on non-Debian, or directly use official tarball
+  INSTALLED_VIA_PKG=0
+  if [ "$PKG_MGR" != "apt-get" ]; then
+    log_info "Attempting to install Go via ${PKG_MGR}..."
+    $PKG_MGR install -y golang || true
+    if check_go_version "go"; then
+      INSTALLED_VIA_PKG=1
     fi
-    curl -fsSL "https://go.dev/dl/go1.22.6.linux-${GO_ARCH}.tar.gz" -o /tmp/go.tar.gz
-    rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go.tar.gz
-    rm -f /tmp/go.tar.gz
-    ln -sf /usr/local/go/bin/go /usr/bin/go
+  fi
+
+  if [ "$INSTALLED_VIA_PKG" -eq 0 ]; then
+    install_official_go
   fi
 fi
 
-# Verify Go runs
-if ! command -v go &> /dev/null; then
-  log_err "Failed to install Go compiler! Please install Go manually."
+# Verify Go runs and satisfies version requirement
+if ! check_go_version "go"; then
+  log_err "Go compiler is missing or incompatible (< 1.22)! Please install Go 1.22+ manually."
   exit 1
 fi
 log_info "Go compiler is ready: $(go version)"
