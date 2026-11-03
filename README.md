@@ -4,9 +4,9 @@ A privacy-focused, mobile-first Instant Messaging (IM) web application built spe
 
 ---
 
-## ⚡ 1-Click Automated Installation (Direct-IP, No Domain Required)
+## ⚡ 1-Click Automated Installation (with Let's Encrypt SSL)
 
-If you don't have a domain and just want to install and access the app directly via your server's **Public IP address**, run this single command on your server (supports Ubuntu, Debian, Oracle Linux, and RHEL):
+Ensure your domain (`cyphrx.duckdns.org`) points to your server's public IP address, then run this single command on your server (supports Ubuntu, Debian, Oracle Linux, and RHEL):
 
 ```bash
 sudo bash installation.sh
@@ -15,11 +15,13 @@ sudo bash installation.sh
 **That's it!** The installer will:
 1. Detect your public IP address automatically.
 2. Set up a 2GB swap file to protect the 1GB RAM server from running out of memory.
-3. Install Nginx and build tools.
+3. Install Nginx, Git, build tools, Go compiler (>= 1.22), and Certbot.
 4. Compile the ultra-lightweight Go server (< 20MB RAM).
 5. Configure systemd for automatic background running and auto-restart.
-6. Configure Nginx and firewalld for direct port 80 access.
-7. Print your ready-to-use URL: **`http://<YOUR_SERVER_IP>`**.
+6. Configure Nginx reverse proxy with WebSocket upgrade support.
+7. Open HTTP (80) and HTTPS (443) firewall ports in UFW, iptables, and firewalld.
+8. Automatically issue a free Let's Encrypt SSL/TLS certificate for `cyphrx.duckdns.org`.
+9. Print your ready-to-use HTTPS URL: **`https://cyphrx.duckdns.org`**.
 
 ---
 
@@ -76,22 +78,23 @@ sudo bash installation.sh
 
 ## 🌐 Accessing Your Web App Over the Internet
 
-### 1. Direct-IP Access
+### 1. Direct Domain (HTTPS) & Direct-IP Access
 After running `sudo bash installation.sh`, open your phone or PC browser and visit:
 ```
-http://<YOUR_SERVER_PUBLIC_IP>
+https://cyphrx.duckdns.org
 ```
-*(e.g., `http://132.145.20.100`)*
+*(or fallback: `http://<YOUR_SERVER_PUBLIC_IP>`)*
 
 ### 2. If using Oracle Cloud Infrastructure (OCI) or Cloud Firewalls (AWS/GCP/DigitalOcean):
-Remember to allow Ingress traffic for port 80 (and 8080) in your Cloud Security Rules / Security Lists:
+Remember to allow Ingress traffic for ports 80, 443 (and 8080) in your Cloud Security Rules / Security Lists:
 - **Source CIDR:** `0.0.0.0/0`
 - **IP Protocol:** `TCP`
-- **Destination Port:** `80, 8080`
+- **Destination Port:** `80, 443, 8080`
 
 If using Ubuntu's `ufw` firewall locally:
 ```bash
 sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
 sudo ufw allow 8080/tcp
 sudo ufw reload
 ```

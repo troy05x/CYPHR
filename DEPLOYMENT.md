@@ -1,27 +1,28 @@
 # Production Deployment & Public Internet Access Guide: CYPHR on Ubuntu / Debian / Oracle Linux (1GB RAM)
 
-This guide takes you through deploying **CYPHR** on an **Ubuntu** (20.04, 22.04, 24.04), **Debian**, or **Oracle Linux** VPS (1GB RAM & dual-core CPU) and accessing it securely over the public internet from any device without needing a domain name.
+This guide takes you through deploying **CYPHR** on an **Ubuntu** (20.04, 22.04, 24.04), **Debian**, or **Oracle Linux** VPS (1GB RAM & dual-core CPU) and accessing it securely over the public internet with automated Let's Encrypt SSL/TLS certificates for `cyphrx.duckdns.org` (or direct IP).
 
 ---
 
 ## ⚡ Method 1: The 1-Click Automated Installer (Recommended)
 
-Simply run the included installer script as root on your Ubuntu or Oracle Linux server:
+Ensure `cyphrx.duckdns.org` points to your server's public IP in your DuckDNS dashboard, then run the installer script as root on your server:
 
 ```bash
 sudo bash installation.sh
 ```
 
 The script will automatically:
-1. Detect your public IP.
-2. Detect your package manager (`apt-get`, `dnf`, or `yum`).
-3. Configure 2GB swap space to guarantee system stability under the 1GB RAM constraint.
-4. Install Nginx, Git, build tools, and modern Go compiler (>= 1.22).
-5. Compile the ultra-lightweight Go server (< 20MB RSS).
-6. Set up systemd service with memory limit cgroups.
-7. Configure Nginx reverse proxy on port 80 (cleaning conflicting default sites).
-8. Open ports in `ufw` (Ubuntu) or `firewalld` (Oracle Linux / RHEL).
-9. Output the ready-to-use URL: **`http://<YOUR_PUBLIC_IP>`**.
+1. Detect your public IP and package manager (`apt-get`, `dnf`, or `yum`).
+2. Configure 2GB swap space to guarantee system stability under the 1GB RAM constraint.
+3. Install Nginx, Git, build tools, Go compiler (>= 1.22), and Certbot (`certbot`, `python3-certbot-nginx`).
+4. Compile the ultra-lightweight Go server (< 20MB RSS).
+5. Set up the systemd service with memory limit cgroups.
+6. Configure Nginx reverse proxy for `cyphrx.duckdns.org` with full WebSocket support (`Upgrade` & `Connection "Upgrade"`).
+7. Open HTTP (80) and HTTPS (443) ports in UFW, iptables, and firewalld.
+8. Automatically issue a free Let's Encrypt SSL certificate via Certbot and configure HTTPS redirection.
+9. Verify SSL certificate generation and Nginx listening on port 443.
+10. Output your ready-to-use HTTPS URL: **`https://cyphrx.duckdns.org`**.
 
 ---
 
@@ -42,15 +43,20 @@ curl -4 ifconfig.me
 Add an Ingress Security Rule:
 - **Source CIDR:** `0.0.0.0/0`
 - **IP Protocol:** `TCP`
-- **Destination Port Range:** `80, 8080`
+- **Destination Port Range:** `80, 443, 8080`
 
-#### 1.2 In Server Terminal (`ufw` on Ubuntu):
+#### 1.2 In Server Terminal (`ufw` and `iptables` on Ubuntu/Debian):
 ```bash
 sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
 sudo ufw allow 8080/tcp
 sudo ufw reload
+
+# iptables:
+sudo iptables -I INPUT -p tcp --dport 80 -j ACCEPT
+sudo iptables -I INPUT -p tcp --dport 443 -j ACCEPT
 ```
-*(Or if using `firewalld`: `sudo firewall-cmd --permanent --add-service=http && sudo firewall-cmd --permanent --add-port=8080/tcp && sudo firewall-cmd --reload`)*
+*(Or if using `firewalld`: `sudo firewall-cmd --permanent --add-service=http && sudo firewall-cmd --permanent --add-service=https && sudo firewall-cmd --permanent --add-port=8080/tcp && sudo firewall-cmd --reload`)*
 
 ---
 
@@ -132,8 +138,9 @@ sudo systemctl restart nginx
 
 Open your smartphone or PC browser and enter:
 ```
-http://<YOUR_SERVER_PUBLIC_IP>
+https://cyphrx.duckdns.org
 ```
+*(Or fallback to `http://<YOUR_SERVER_PUBLIC_IP>`)*
 
 1. Enter your **Nickname / Callsign**.
 2. Enter or click **⚡ Random** for a Room ID.

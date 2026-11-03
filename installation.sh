@@ -98,16 +98,16 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 5. Review & Install Core System Prerequisites
+# 5. Review & Install Core System Prerequisites & Certbot
 # ------------------------------------------------------------------------------
-log_info "Checking and installing system packages (Nginx, Git, Tar, Curl)..."
+log_info "Checking and installing system packages (Nginx, Git, Tar, Curl, Certbot)..."
 if [ "$PKG_MGR" = "apt-get" ]; then
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -y
-  apt-get install -y nginx git tar gzip curl coreutils util-linux procps ufw
+  apt-get install -y nginx git tar gzip curl coreutils util-linux procps ufw certbot python3-certbot-nginx iptables
 else
   $PKG_MGR install -y epel-release || true
-  $PKG_MGR install -y nginx git tar gzip curl coreutils util-linux procps-ng
+  $PKG_MGR install -y nginx git tar gzip curl coreutils util-linux procps-ng certbot python3-certbot-nginx iptables
 fi
 
 # ------------------------------------------------------------------------------
@@ -252,23 +252,43 @@ systemctl enable nginx
 systemctl restart nginx
 
 # ------------------------------------------------------------------------------
-# 12. Configure Firewall (firewalld / ufw)
+# 12. Configure Firewall (UFW, iptables & firewalld)
 # ------------------------------------------------------------------------------
+log_info "Configuring firewall rules for HTTP (80), HTTPS (443), and backend (8080)..."
+
+# Ensure HTTPS (Port 443) and HTTP (Port 80) are open in UFW if installed
+if command -v ufw &> /dev/null; then
+  log_info "Configuring UFW rules (opening 80/tcp, 443/tcp, 8080/tcp)..."
+  ufw allow 80/tcp || true
+  ufw allow 443/tcp || true
+  ufw allow 8080/tcp || true
+  if ufw status | grep -q "Status: active"; then
+    ufw reload || true
+  fi
+fi
+
+# Ensure HTTPS (Port 443) and HTTP (Port 80) are opened in iptables
+if command -v iptables &> /dev/null; then
+  log_info "Configuring iptables rules..."
+  if ! iptables -C INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null; then
+    iptables -I INPUT -p tcp --dport 80 -j ACCEPT || true
+  fi
+  if ! iptables -C INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null; then
+    iptables -I INPUT -p tcp --dport 443 -j ACCEPT || true
+  fi
+fi
+
+# Configure firewalld if active
 if command -v firewall-cmd &> /dev/null && systemctl is-active --quiet firewalld; then
-  log_info "Configuring firewalld rules for port 80 and 8080..."
+  log_info "Configuring firewalld rules..."
   firewall-cmd --permanent --add-service=http || true
   firewall-cmd --permanent --add-service=https || true
   firewall-cmd --permanent --add-port=8080/tcp || true
   firewall-cmd --reload || true
-elif command -v ufw &> /dev/null && ufw status | grep -q "Status: active"; then
-  log_info "Configuring ufw rules for port 80 and 8080..."
-  ufw allow 80/tcp || true
-  ufw allow 8080/tcp || true
-  ufw reload || true
 fi
 
 # ------------------------------------------------------------------------------
-# 13. Health Check & Verification
+# 13. Health Check & Verification of Local Backend
 # ------------------------------------------------------------------------------
 log_info "Validating server health..."
 for i in {1..10}; do
@@ -280,25 +300,79 @@ for i in {1..10}; do
 done
 
 if [ "${HEALTHY:-0}" -eq 1 ]; then
-  log_info "Healthcheck PASSED! Service is responsive."
+  log_info "Backend healthcheck PASSED! Service is responsive."
 else
-  log_warn "Healthcheck pending. Review status with: journalctl -u im-server -n 20"
+  log_warn "Backend healthcheck pending. Review status with: journalctl -u im-server -n 20"
+fi
+
+# ------------------------------------------------------------------------------
+# 14. Automated SSL/TLS Certificate Provisioning with Certbot
+# ------------------------------------------------------------------------------
+DOMAIN="cyphrx.duckdns.org"
+EMAIL="admin@cyphrx.duckdns.org"
+
+log_info "Requesting Let's Encrypt SSL/TLS certificate for ${DOMAIN}..."
+
+CERTBOT_SUCCESS=0
+if command -v certbot &> /dev/null; then
+  if certbot --nginx -d "${DOMAIN}" --non-interactive --agree-tos --redirect -m "${EMAIL}"; then
+    CERTBOT_SUCCESS=1
+    log_info "Certbot successfully provisioned and configured certificate for ${DOMAIN}."
+  else
+    log_warn "Certbot automated certificate generation failed. Check that ${DOMAIN} points to this server's IP (${PUBLIC_IP})."
+  fi
+else
+  log_err "Certbot binary not found. Could not provision SSL certificate."
+fi
+
+# Automatically test (nginx -t) and reload Nginx upon execution
+log_info "Testing and reloading Nginx configuration..."
+if nginx -t; then
+  systemctl reload nginx
+  log_info "Nginx configuration verified and reloaded successfully."
+else
+  log_err "Nginx configuration test failed!"
+fi
+
+# ------------------------------------------------------------------------------
+# 15. SSL & Nginx Port 443 Status Checks
+# ------------------------------------------------------------------------------
+log_info "Verifying SSL certificate and HTTPS listener status..."
+SSL_READY=0
+if [ -d "/etc/letsencrypt/live/${DOMAIN}" ] || [ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
+  log_info "Verified: Let's Encrypt SSL certificate exists for ${DOMAIN}."
+  SSL_READY=1
+else
+  log_warn "Certificate directory /etc/letsencrypt/live/${DOMAIN} not found."
+fi
+
+PORT_443_LISTENING=0
+if ss -tlpn 2>/dev/null | grep -q ':443 ' || netstat -tlpn 2>/dev/null | grep -q ':443 ' || lsof -i :443 2>/dev/null | grep -q 'LISTEN'; then
+  PORT_443_LISTENING=1
+  log_info "Verified: Nginx is active and listening on HTTPS Port 443."
+else
+  log_warn "Port 443 is not currently detected as listening."
 fi
 
 echo ""
 echo "=================================================================="
-echo "🎉 CYPHR INSTALLATION COMPLETED SUCCESSFULLY!"
+if [ "$SSL_READY" -eq 1 ] && [ "$PORT_443_LISTENING" -eq 1 ]; then
+  echo "🎉 CYPHR SSL & APPLICATION INSTALLATION COMPLETED SUCCESSFULLY!"
+else
+  echo "⚡ CYPHR INSTALLATION COMPLETED WITH NOTICES"
+fi
 echo "=================================================================="
 echo ""
 echo "Access the private messaging app from your browser at:"
 echo ""
-echo "   👉  http://${PUBLIC_IP}"
+echo "   👉  https://${DOMAIN}"
 echo ""
-echo "Alternative direct port (if port 80 is blocked by ISP):"
+echo "Fallback / Direct access:"
+echo "   👉  http://${PUBLIC_IP}"
 echo "   👉  http://${PUBLIC_IP}:8080"
 echo ""
-echo "📌 ORACLE CLOUD (OCI) INGRESS NOTE:"
-echo "If hosted on Oracle Cloud Infrastructure, ensure port 80 & 8080"
-echo "are permitted in your VCN Default Security List Ingress Rules."
+echo "📌 FIREWALL & CLOUD INGRESS NOTE:"
+echo "Ensure ports 80, 443, and 8080 are allowed in your Cloud Provider's"
+echo "Security List / Security Groups (e.g., Oracle Cloud, AWS, GCP)."
 echo "=================================================================="
 echo ""
