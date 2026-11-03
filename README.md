@@ -4,6 +4,25 @@ A privacy-focused, mobile-first Instant Messaging (IM) web application built spe
 
 ---
 
+## ⚡ 1-Click Automated Installation (Direct-IP, No Domain Required)
+
+If you don't have a domain and just want to install and access the app directly via your server's **Public IP address**, run this single command on your Oracle Linux server:
+
+```bash
+sudo bash installation.sh
+```
+
+**That's it!** The installer will:
+1. Detect your public IP address automatically.
+2. Set up a 2GB swap file to protect the 1GB RAM server from running out of memory.
+3. Install Nginx and build tools.
+4. Compile the ultra-lightweight Go server (< 20MB RAM).
+5. Configure systemd for automatic background running and auto-restart.
+6. Configure Nginx and firewalld for direct port 80 access.
+7. Print your ready-to-use URL: **`http://<YOUR_SERVER_IP>`**.
+
+---
+
 ## 🚀 Key Highlights & Architectural Decisions
 
 1. **Ultra-Low Memory Footprint (< 20 MB RAM):**
@@ -11,7 +30,7 @@ A privacy-focused, mobile-first Instant Messaging (IM) web application built spe
    - Tuned runtime with `GOMEMLIMIT=128MiB` and aggressive garbage collection (`GOGC=50`).
    - No external database or disk storage required.
 2. **End-to-End Encryption (E2EE):**
-   - Utilizes the browser's native **Web Crypto API** with **AES-256-GCM** and **PBKDF2** key derivation (100,000 rounds).
+   - Client-side encryption with **AES-256-GCM** and **PBKDF2** key derivation (100,000 rounds) using Web Crypto API (with automatic pure-JS stream cipher fallback for non-HTTPS direct IP).
    - Messages are encrypted and decrypted strictly on the client device. The server only relays encrypted ciphertext.
 3. **Zero-Retention Guarantee:**
    - 100% ephemeral in-memory message routing.
@@ -31,6 +50,7 @@ A privacy-focused, mobile-first Instant Messaging (IM) web application built spe
 ## 📁 Repository Structure
 
 ```
+├── installation.sh            # 1-Click automated installer for Oracle Linux
 ├── cmd/
 │   └── server/
 │       ├── main.go            # HTTP server, embedded assets & WebSocket handler
@@ -45,47 +65,47 @@ A privacy-focused, mobile-first Instant Messaging (IM) web application built spe
 │       ├── hub.go             # Zero-retention in-memory room & broadcast manager
 │       └── hub_test.go        # Unit tests for hub routing and lifecycle
 ├── deploy/
-│   ├── nginx.conf             # Production Nginx reverse proxy + TLS + WebSocket upgrade
+│   ├── nginx.conf             # Production Nginx reverse proxy + WebSocket upgrade
 │   └── im-server.service      # Systemd service unit with memory limit cgroups
-├── DEPLOYMENT.md              # Complete Oracle Linux deployment & internet access guide
+├── DEPLOYMENT.md              # Complete manual & automated Oracle Linux deployment guide
 ├── go.mod
 └── README.md
 ```
 
 ---
 
-## 🛠️ Quickstart (Local Development)
+## 🌐 Accessing Your Web App Over the Internet
 
-### Prerequisites
-- Go 1.22+ (tested up to Go 1.26)
-
-### Run Server
-```bash
-go run ./cmd/server
+### 1. Direct-IP Access
+After running `sudo bash installation.sh`, open your phone or PC browser and visit:
 ```
-
-Open your browser to `http://localhost:8080`.
-
-### Run Tests
-```bash
-go test -v ./...
+http://<YOUR_SERVER_PUBLIC_IP>
 ```
+*(e.g., `http://132.145.20.100`)*
+
+### 2. If using Oracle Cloud Infrastructure (OCI):
+Remember to allow Ingress traffic for port 80 in your Oracle Cloud Console:
+- Go to **Networking** > **Virtual Cloud Networks** > Click your VCN > **Security Lists**.
+- Click **Add Ingress Rules**:
+  - Source CIDR: `0.0.0.0/0`
+  - IP Protocol: `TCP`
+  - Destination Port: `80, 8080`
+
+### 3. Shareable Private Room Links
+Once you join a room, tap the **🔗 (Link)** button in the top right corner. It will copy a private link to your clipboard:
+```
+http://<YOUR_SERVER_PUBLIC_IP>/#room=secret-vault&key=SecretKey123
+```
+Anyone who opens this link will immediately join the encrypted room without the key ever reaching the server.
 
 ---
 
-## 🌐 How to Deploy Online and Access via Internet
+## 🛠️ Local Development & Testing
 
-For the complete, copy-paste deployment guide with exact commands, see **[DEPLOYMENT.md](DEPLOYMENT.md)**.
+```bash
+# Run server locally
+go run ./cmd/server
 
-### Summary of Deployment Steps on Oracle Linux:
-1. **Find Public IP:** `curl -4 ifconfig.me`
-2. **Open Firewall Ports:** Run `sudo firewall-cmd --permanent --add-service=http --add-service=https --add-port=8080/tcp && sudo firewall-cmd --reload` and ensure port 80/443 ingress is allowed in your Oracle Cloud VCN Security List.
-3. **Set Up 2GB Swap:** Prevents OOM memory issues on the 1GB VPS.
-4. **Compile & Install Daemon:** Build `cyphr-server` into `/opt/im-server/`.
-5. **Start Systemd Service:** Enable `deploy/im-server.service` with automatic restarts and memory limits.
-6. **Configure Nginx & Free SSL:** Set up `deploy/nginx.conf` and run `certbot --nginx -d chat.yourdomain.com`.
-
-### Finding and Accessing Your Web App:
-- **Public Domain (Secure HTTPS):** `https://chat.yourdomain.com`
-- **Direct IP (Testing):** `http://<YOUR_SERVER_PUBLIC_IP>:8080`
-- Once opened, create a room, click the **🔗** button to copy a private invite link with embedded key fragment (`#room=...&key=...`), and send it to friends to chat in real-time with zero trace!
+# Run unit and integration tests
+go test -v ./...
+```
