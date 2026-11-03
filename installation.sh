@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# CYPHR - 1-Click Automated Installer for Oracle Linux (1GB RAM)
+# CYPHR - 1-Click Automated Installer for Ubuntu / Debian / Oracle Linux
 # Validates & installs all prerequisites, configures swap, builds daemon,
 # sets up systemd & Nginx reverse proxy for Direct-IP, and validates health.
 # ==============================================================================
@@ -21,7 +21,7 @@ log_err() {
 
 echo ""
 echo "=================================================================="
-echo "⚡ CYPHR: Starting Automated Installation for Oracle Linux"
+echo "⚡ CYPHR: Starting Automated Installation (Ubuntu/Debian/RHEL/OL)"
 echo "=================================================================="
 echo ""
 
@@ -49,13 +49,15 @@ else
   log_warn "/etc/os-release not found. Proceeding with standard EL package manager."
 fi
 
-# Detect Package Manager (dnf or yum)
-if command -v dnf &> /dev/null; then
+# Detect Package Manager (apt-get, dnf, or yum)
+if command -v apt-get &> /dev/null; then
+  PKG_MGR="apt-get"
+elif command -v dnf &> /dev/null; then
   PKG_MGR="dnf"
 elif command -v yum &> /dev/null; then
   PKG_MGR="yum"
 else
-  log_err "Neither dnf nor yum package manager found! This script requires Oracle Linux/RHEL."
+  log_err "No supported package manager found (apt-get, dnf, or yum)!"
   exit 1
 fi
 log_info "Using package manager: ${PKG_MGR}"
@@ -98,9 +100,15 @@ fi
 # ------------------------------------------------------------------------------
 # 5. Review & Install Core System Prerequisites
 # ------------------------------------------------------------------------------
-log_info "Checking and installing system packages (EPEL, Nginx, Git, Tar, Curl)..."
-$PKG_MGR install -y epel-release || true
-$PKG_MGR install -y nginx git tar gzip curl coreutils util-linux procps-ng
+log_info "Checking and installing system packages (Nginx, Git, Tar, Curl)..."
+if [ "$PKG_MGR" = "apt-get" ]; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -y
+  apt-get install -y nginx git tar gzip curl coreutils util-linux procps ufw
+else
+  $PKG_MGR install -y epel-release || true
+  $PKG_MGR install -y nginx git tar gzip curl coreutils util-linux procps-ng
+fi
 
 # ------------------------------------------------------------------------------
 # 6. Review & Install Go Compiler
@@ -109,6 +117,13 @@ NEED_GO_INSTALL=0
 if command -v go &> /dev/null; then
   GO_VER=$(go version | awk '{print $3}' | sed 's/go//')
   log_info "Found existing Go version: ${GO_VER}"
+  # Check if version is at least 1.22
+  GO_MAJOR=$(echo "$GO_VER" | cut -d. -f1)
+  GO_MINOR=$(echo "$GO_VER" | cut -d. -f2)
+  if [ "$GO_MAJOR" -lt 1 ] || { [ "$GO_MAJOR" -eq 1 ] && [ "$GO_MINOR" -lt 22 ]; }; then
+    log_warn "Installed Go version (${GO_VER}) is below minimum requirement 1.22+. Upgrading Go..."
+    NEED_GO_INSTALL=1
+  fi
 else
   NEED_GO_INSTALL=1
 fi
@@ -194,8 +209,9 @@ if [ -f /etc/nginx/nginx.conf ]; then
   sed -i -E 's/listen[[:space:]]+80[[:space:]]+default_server;/listen 80;/g' /etc/nginx/nginx.conf 2>/dev/null || true
   sed -i -E 's/listen[[:space:]]+\[::\]:80[[:space:]]+default_server;/listen [::]:80;/g' /etc/nginx/nginx.conf 2>/dev/null || true
 fi
-# Remove any conflicting default configs in conf.d
+# Remove any conflicting default configs in conf.d or Debian/Ubuntu sites-enabled
 rm -f /etc/nginx/conf.d/default.conf
+rm -f /etc/nginx/sites-enabled/default
 
 cp "${SCRIPT_DIR}/deploy/nginx.conf" /etc/nginx/conf.d/cyphr.conf
 
@@ -204,7 +220,7 @@ systemctl enable nginx
 systemctl restart nginx
 
 # ------------------------------------------------------------------------------
-# 12. Configure Firewall (firewalld)
+# 12. Configure Firewall (firewalld / ufw)
 # ------------------------------------------------------------------------------
 if command -v firewall-cmd &> /dev/null && systemctl is-active --quiet firewalld; then
   log_info "Configuring firewalld rules for port 80 and 8080..."
@@ -212,6 +228,11 @@ if command -v firewall-cmd &> /dev/null && systemctl is-active --quiet firewalld
   firewall-cmd --permanent --add-service=https || true
   firewall-cmd --permanent --add-port=8080/tcp || true
   firewall-cmd --reload || true
+elif command -v ufw &> /dev/null && ufw status | grep -q "Status: active"; then
+  log_info "Configuring ufw rules for port 80 and 8080..."
+  ufw allow 80/tcp || true
+  ufw allow 8080/tcp || true
+  ufw reload || true
 fi
 
 # ------------------------------------------------------------------------------
